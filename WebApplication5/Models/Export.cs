@@ -27,7 +27,7 @@ namespace WebApplication5.Models
         }
         public async Task<byte[]> test()
         {
-            dynamic[] tmp = GetDummyData(5000000);
+            dynamic[] tmp = GetDummyData(3000000);
             Console.WriteLine($"Finished generating items: {DateTime.Now.ToLongTimeString()}");
             Console.WriteLine($"Generating CSV: {DateTime.Now.ToLongTimeString()}");
             // 1048574 is max, excel says 1048576 is max but because of header and seperater line it needs to be minussed with 2
@@ -56,8 +56,8 @@ namespace WebApplication5.Models
             if (listToExport is null || !listToExport.Any())
                 throw new ArgumentNullException(nameof(listToExport));
 
-            System.IO.File.Delete("Reports/" + GenerateString(30) + fileName);
-            var file = System.IO.File.Create("Reports/" + GenerateString(30) + fileName, 4096, FileOptions.DeleteOnClose);
+            System.IO.File.Delete(GenerateString(30) + fileName);
+            var file = System.IO.File.Create(GenerateString(30) + fileName, 4096, FileOptions.DeleteOnClose);
 
             byte[] bytes;
             using (var streamWriter = new StreamWriter(file, Encoding.UTF8))
