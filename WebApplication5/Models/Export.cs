@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Dynamic;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -9,35 +11,48 @@ namespace WebApplication5.Models
 {
     public class Export : IDisposable
     {
+        //List<List<object>> dataObjects = new();
+        public string Id;
 
-        public dynamic[] GetDummyData(int length)
+        public Export()
         {
-            dynamic[] tmp = new dynamic[length];
+            Id = GenerateString();
+        }
+
+        public List<object> GetDummyData(int length)
+        {
+            var data = new List<object>();
             // tmp never gets cleared by the garbage collector, even if its not used after the call is finished
             for (int i = 0; i < length; i++)
             {
-                dynamic test = new System.Dynamic.ExpandoObject();
+                dynamic @object = new ExpandoObject();
+                @object.GatewayName = GenerateString();
+                @object.Message = GenerateString();
+                @object.Status = GenerateString();
+                data.Add(@object);
 
-                test.GatewayName = GenerateString();
-                test.Message = GenerateString();
-                test.Status = GenerateString();
-                tmp[i] = test;
+                if (i % 500000 == 0)
+                {
+                    Console.WriteLine(i);
+                }
             }
-            return tmp;
+            return data;
         }
-        public async Task<byte[]> test()
+
+        public byte[] Test(int amount)
         {
-            dynamic[] tmp = GetDummyData(3000000);
+            List<object> data = GetDummyData(amount);
             Console.WriteLine($"Finished generating items: {DateTime.Now.ToLongTimeString()}");
             Console.WriteLine($"Generating CSV: {DateTime.Now.ToLongTimeString()}");
             // 1048574 is max, excel says 1048576 is max but because of header and seperater line it needs to be minussed with 2
-            return await ExportDataAsCSV(tmp, $"Report.csv");
+            ExportDataAsCSV(data, $"wwwroot/reports/{Id}.csv");
+            return null;
         }
 
+        private readonly Random random = new ();
         private string GenerateString(int length = 50)
         {
-            StringBuilder str_build = new StringBuilder();
-            Random random = new Random();
+            StringBuilder str_build = new();
 
             char letter;
 
@@ -48,64 +63,72 @@ namespace WebApplication5.Models
                 letter = Convert.ToChar(shift + 65);
                 str_build.Append(letter);
             }
-            return str_build.ToString();
+            var str = str_build.ToString();
+            str_build.Clear();
+            return str;
         }
 
-        private async Task<byte[]> ExportDataAsCSV(IEnumerable<object> listToExport, string fileName)
+        private static void ExportDataAsCSV(IEnumerable<object> listToExport, string fileName)
         {
             if (listToExport is null || !listToExport.Any())
                 throw new ArgumentNullException(nameof(listToExport));
 
-            System.IO.File.Delete(GenerateString(30) + fileName);
-            var file = System.IO.File.Create(GenerateString(30) + fileName, 4096, FileOptions.DeleteOnClose);
-
-            byte[] bytes;
-            using (var streamWriter = new StreamWriter(file, Encoding.UTF8))
+            using var file = File.Open(fileName, FileMode.Append, FileAccess.Write, FileShare.Write);
+            using var streamWriter = new StreamWriter(file, Encoding.UTF8);
+            if (file.Length == 0)
             {
-                await streamWriter.WriteAsync("sep=;");
-                await streamWriter.WriteAsync(Environment.NewLine);
-
-                var headerNames = listToExport.First().GetType().GetProperties();
-                foreach (var header in headerNames)
-                {
-                    var displayAttribute = header.GetCustomAttributes(typeof(System.ComponentModel.DataAnnotations.DisplayAttribute), true);
-                    if (displayAttribute.Length != 0)
-                    {
-                        var attribute = displayAttribute.Single() as System.ComponentModel.DataAnnotations.DisplayAttribute;
-                        await streamWriter.WriteAsync(attribute.Name + ";");
-                    }
-                    else
-                        await streamWriter.WriteAsync(header.Name + ";");
-                }
-                await streamWriter.WriteAsync(Environment.NewLine);
-
-                var newListToExport = listToExport.ToArray();
-
-                for (int j = 0; j < newListToExport.Length; j++)
-                {
-                    object item = newListToExport[j];
-                    var itemProperties = item.GetType().GetProperties();
-                    for (int i = 0; i < itemProperties.Length; i++)
-                    {
-                        await streamWriter.WriteAsync(itemProperties[i].GetValue(item)?.ToString() + ";");
-                    }
-                    await streamWriter.WriteAsync(Environment.NewLine);
-                }
-
-
-
-                //Helpers.LogHelper.Log(Helpers.LogHelper.LogType.Info, GetType(), $"User {User.Identity.Name} downloaded {fileName}");
-                await file.FlushAsync();
-                file.Position = 0;
-
-                bytes = new byte[file.Length];
-                file.Read(bytes, 0, bytes.Length);
+                Console.WriteLine("Adding seperator");
+                streamWriter.Write("sep=;");
+                streamWriter.Write(Environment.NewLine);
             }
-            return bytes;
-            //return File(bytes, "text/csv", fileName);
+
+            var headerNames = listToExport.First().GetType().GetProperties();
+            foreach (var header in headerNames)
+            {
+                var displayAttribute = header.GetCustomAttributes(typeof(System.ComponentModel.DataAnnotations.DisplayAttribute), true);
+                if (displayAttribute.Length != 0)
+                {
+                    var attribute = displayAttribute.Single() as System.ComponentModel.DataAnnotations.DisplayAttribute;
+                    streamWriter.Write(attribute.Name + ";");
+                }
+                else
+                    streamWriter.Write(header.Name + ";");
+            }
+            streamWriter.Write(Environment.NewLine);
+            var j = 0;
+            foreach (var item in listToExport)
+            {
+                var itemProperties = item.GetType().GetProperties();
+                for (int i = 0; i < itemProperties.Length; i++)
+                {
+                    var a = itemProperties[i].GetValue(item);
+                    if (a != null)
+                        streamWriter.Write(a + ";");
+                    else
+                        streamWriter.Write(";");
+                }
+                streamWriter.Write(Environment.NewLine);
+                j++;
+                if (j % 500000 == 0)
+                    Console.WriteLine(j);
+            }
+
+            //Helpers.LogHelper.Log(Helpers.LogHelper.LogType.Info, GetType(), $"User {User.Identity.Name} downloaded {fileName}");
+            streamWriter.Flush();
+            file.Flush();
+
+            streamWriter.Close();
+            file.Close();
         }
 
-        public void Dispose()
+        void IDisposable.Dispose()
+        {
+            GC.SuppressFinalize(this);
+            Cleanup();
+        }
+
+
+        public void Cleanup()
         {
             GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced);
         }

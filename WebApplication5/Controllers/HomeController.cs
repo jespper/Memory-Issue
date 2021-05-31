@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
@@ -11,20 +12,50 @@ namespace WebApplication5.Controllers
 {
     public class HomeController : Controller
     {
-        private readonly ILogger<HomeController> _logger;
-
-        public HomeController(ILogger<HomeController> logger)
+        public IActionResult Index()
         {
-            _logger = logger;
+            return View();
         }
 
-        [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
-        public async Task<IActionResult> Index()
+        [ResponseCache(Duration = 999, Location = ResponseCacheLocation.None, NoStore = true)]
+        [HttpGet("test")]
+        public IActionResult Test(int amount = 3000000)
         {
-            using var export = new Export();
-            await export.test();
-            Console.WriteLine("Done generating data");
-            return View();
+            try
+            {
+                using var export = new Export();
+
+                var bytes = export.Test(amount);
+
+                var file = File($"\\reports\\{export.Id}.csv", "text/csv", "test.csv");
+                //Response.
+                return file;
+            }
+            catch (Exception)
+            {
+                Console.WriteLine(this);
+                throw;
+            }
+        }
+
+        public override void OnActionExecuted(ActionExecutedContext context)
+        {
+            base.OnActionExecuted(context);
+
+            if (context.Result is VirtualFileResult file)
+            {
+                context.HttpContext.Response.OnCompleted(() =>
+                {
+                    var task = new Task(() => RemoveOldFile(file.FileName));
+                    task.Start();
+                    return task;
+                });
+            }
+        }
+
+        private static void RemoveOldFile(string fileName)
+        {
+            System.IO.File.Delete(Environment.CurrentDirectory + "\\wwwroot" + fileName);
         }
 
         public IActionResult Privacy()
